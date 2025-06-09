@@ -1,0 +1,88 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// --- Modelo para la Tienda/Negocio ---
+model Store {
+  id        String   @id @default(cuid())
+  name      String // Nombre de la tienda (requerido)
+  address   String?
+  phone     String?
+  // Podríamos añadir más campos específicos de la tienda aquí (ej. logo_url, configuraciones, etc.)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relación uno a muchos con Usuarios (una tienda tiene muchos usuarios)
+  users User[]
+
+  // --- Relaciones futuras ---
+  // products Product[] // Descomentar cuando creemos el modelo Product
+  // customers Customer[] // Descomentar cuando creemos el modelo Customer
+  // sales Sale[]       // Descomentar cuando creemos el modelo Sale
+  // repairs Repair[]   // Descomentar cuando creemos el modelo Repair
+
+  @@map("stores") // Mapea al nombre de tabla 'stores' en la DB
+}
+
+// --- Modelo para Usuarios (Empleados) ---
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique // Email único en todo el sistema para simplificar login
+  password  String // Contraseña hasheada
+  firstName String?
+  lastName  String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // --- Vinculo con Store (Cada usuario pertenece a UNA tienda) ---
+  storeId String?
+  store   Store?  @relation(fields: [storeId], references: [id], onDelete: Cascade) // onDelete: Cascade significa que si se borra la tienda, se borran sus usuarios. Podríamos cambiarlo a Restrict si preferimos evitarlo.
+
+  // --- Vinculo con Roles (Un usuario puede tener múltiples roles) ---
+  roles Role[] @relation("UserRoles")
+
+  @@map("users")
+}
+
+// --- Modelo para Roles ---
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique // Ej: "STORE_ADMIN", "SALESPERSON", "TECHNICIAN"
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users       User[]       @relation("UserRoles") // Relación con User
+  permissions Permission[] @relation("RolePermissions") // Relación con Permission
+
+  @@map("roles")
+}
+
+// --- Modelo para Permisos ---
+model Permission {
+  id          String  @id @default(cuid())
+  action      String // Ej: "manage", "create", "read", "update", "delete"
+  subject     String // Ej: "User", "Product", "Sale", "Inventory"
+  description String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  roles Role[] @relation("RolePermissions") // Relación con Role
+
+  @@unique([action, subject]) // Combinación única
+  @@map("permissions")
+}

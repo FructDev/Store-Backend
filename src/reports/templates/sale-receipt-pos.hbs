@@ -1,0 +1,272 @@
+<html lang='es'>
+  <head>
+    <meta charset='UTF-8' />
+    <title>Recibo Venta {{sale.saleNumber}}</title>
+    <style>
+      /* --- Reset y Configuración Base --- */
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        font-family: 'Courier New', Courier, monospace;
+      }
+      body {
+        color: #000;
+        background-color: #fff;
+      }
+      /* El contenedor principal sigue controlando el ancho */
+      .receipt-container {
+        width: 72mm; /* Para papel de 80mm */
+        /* Si usas papel de 58mm, cambia a aprox. 50mm */
+      }
+
+      /* --- Estilos de Secciones con más Espaciado Vertical --- */
+      .header {
+        text-align: center;
+        margin-bottom: 8px;
+      } /* Más espacio abajo */
+      .header h1 {
+        font-size: 11pt;
+        margin: 0 0 2px 0;
+        font-weight: 600;
+      }
+      .header p {
+        font-size: 8pt;
+        margin: 2px 0;
+        line-height: 1.3;
+      }
+
+      .details,
+      .totals,
+      .payments {
+        font-size: 8pt;
+        padding: 5px 0; /* Más padding vertical */
+      }
+      .details .row,
+      .totals .row,
+      .payments .row {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 3px; /* Más espacio entre filas */
+      }
+
+      .items-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 8px 0; /* Más espacio arriba y abajo de la tabla */
+        font-size: 8pt;
+      }
+      .items-table thead th {
+        text-align: left;
+        border-top: 1px dashed #000;
+        border-bottom: 1px dashed #000;
+        font-weight: 600;
+        padding: 4px 0; /* Más padding vertical en encabezado de tabla */
+      }
+      .items-table tbody td {
+        vertical-align: top;
+        padding: 4px 0; /* Más padding vertical en filas de ítems */
+        border-bottom: 1px dotted #ccc; /* Separador sutil entre ítems */
+      }
+      .items-table .col-desc {
+        word-break: break-word;
+        padding-right: 5px;
+      }
+      .items-table .col-qty {
+        width: 12%;
+        text-align: center;
+      }
+      .items-table .col-price,
+      .items-table .col-total {
+        width: 22%;
+        text-align: right;
+        white-space: nowrap;
+      }
+      .items-table .item-details {
+        font-size: 7pt;
+        color: #444;
+        padding-left: 4px;
+      }
+
+      .totals .grand-total .label,
+      .totals .grand-total .value {
+        font-weight: bold;
+        font-size: 11pt; /* Total más grande */
+        border-top: 1px dashed #000;
+        padding-top: 5px; /* Más espacio antes del total */
+      }
+
+      .footer {
+        text-align: center;
+        margin-top: 10px;
+      }
+      .footer p {
+        font-size: 8pt;
+        margin: 2px 0;
+        line-height: 1.3;
+        word-break: break-word;
+      }
+      .separator {
+        border-top: 1px dashed #000;
+        margin: 8px 0;
+      }
+      @page {
+        /* Le damos una pista al navegador sobre el tamaño. */
+        /* El ancho es el más importante. La altura puede ser la de A4, el contenido simplemente fluirá. */
+        /* Puppeteer ya controla el tamaño final del PDF, esto es una ayuda para el diálogo de impresión. */
+        size: 80mm; /* O 58mm si ese es el tamaño objetivo */
+        margin: 3mm; /* Un margen pequeño para la impresión real */
+      }
+    </style>
+  </head>
+  <body>
+    <div class='receipt-container'>
+      <header class='header'>
+        {{#if store.logoUrl}}
+          <img
+            src='{{store.logoUrl}}'
+            alt='Logo'
+            style='max-height: 40px; max-width: 80%; margin: 0 auto 5px;'
+          />
+        {{/if}}
+        <h1>{{store.name}}</h1>
+        {{#if store.address}}<p>{{store.address}}</p>{{/if}}
+        {{#if store.rnc}}<p>RNC: {{store.rnc}}</p>{{/if}}
+        {{#if store.phone}}<p>Tel: {{store.phone}}</p>{{/if}}
+      </header>
+
+      <div class='separator'></div>
+
+      <section class='details'>
+        <div class='row'><span>Venta #:</span><span
+          >{{sale.saleNumber}}</span></div>
+        {{#if sale.ncf}}<div class='row'><span>NCF:</span><span
+            >{{sale.ncf}}</span></div>{{/if}}
+        <div class='row'><span>Fecha:</span><span>{{formatDate
+              sale.saleDate
+              'dd/MM/yy HH:mm'
+            }}</span></div>
+        <div class='row'><span>Cajero/a:</span><span
+          >{{sale.salespersonName}}</span></div>
+        {{#if sale.customerName}}
+          <div class='row'><span>Cliente:</span><span
+            >{{sale.customerName}}</span></div>
+        {{/if}}
+      </section>
+
+      <table class='items-table'>
+        <thead>
+          <tr>
+            <th class='col-desc'>Descripción</th>
+            <th class='col-qty'>Cant.</th>
+            <th class='col-price'>Precio</th>
+            <th class='col-total'>Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{#each sale.lines}}
+            <tr>
+              <td class='col-desc'>
+                {{this.productName}}
+                {{#if this.imei}}<div class='item-details'>S/N:
+                    {{this.imei}}</div>{{/if}}
+                {{#if (gt this.lineDiscountAmount 0)}}
+                  <div class='item-details'>
+                    {{this.quantity}}
+                    x
+                    {{formatCurrency @root.currencySymbol this.unitPrice}}
+                    (Desc: -{{formatCurrency
+                      @root.currencySymbol
+                      this.lineDiscountAmount
+                    }})
+                  </div>
+                {{/if}}
+              </td>
+              <td class='col-qty'>{{this.quantity}}</td>
+              <td class='col-price'>{{formatCurrency
+                  @root.currencySymbol
+                  this.unitPrice
+                }}</td>
+              <td class='col-total'>{{formatCurrency
+                  @root.currencySymbol
+                  this.lineTotalAfterTax
+                }}</td>
+            </tr>
+          {{/each}}
+        </tbody>
+      </table>
+
+      <div class='separator'></div>
+
+      <section class='totals'>
+        <div class='row'>
+          <span class='label'>Subtotal:</span>
+          <span class='value'>{{formatCurrency
+              currencySymbol
+              sale.subTotalAfterLineDiscounts
+            }}</span>
+        </div>
+        {{#if (gt sale.discountOnTotalAmount 0)}}
+          <div class='row'>
+            <span class='label'>Descuento:</span>
+            <span class='value'>-{{formatCurrency
+                currencySymbol
+                sale.discountOnTotalAmount
+              }}</span>
+          </div>
+        {{/if}}
+        <div class='row'>
+          <span class='label'>Impuestos ({{multiply saleTaxRate 100}}%):</span>
+          <span class='value'>{{formatCurrency
+              currencySymbol
+              sale.taxTotal
+            }}</span>
+        </div>
+        <div class='row grand-total'>
+          <span class='label'>TOTAL:</span>
+          <span class='value'>{{formatCurrency
+              currencySymbol
+              sale.totalAmount
+            }}</span>
+        </div>
+      </section>
+
+      <div class='separator'></div>
+
+      <section class='payments'>
+        {{#each sale.payments}}
+          <div class='row'>
+            <span>{{lookup
+                @root.paymentMethodLabels
+                this.paymentMethod
+              }}:</span>
+            <span class='value'>{{formatCurrency
+                @root.currencySymbol
+                this.amount
+              }}</span>
+          </div>
+        {{/each}}
+        {{#if (gt sale.changeGiven 0)}}
+          <div class='row'>
+            <span class='label'>Cambio:</span>
+            <span class='value'>{{formatCurrency
+                currencySymbol
+                sale.changeGiven
+              }}</span>
+          </div>
+        {{/if}}
+      </section>
+
+      <footer class='footer'>
+        {{#if store.receiptFooterNotes}}
+          <div class='separator'></div>
+          {{#each (split store.receiptFooterNotes '\n')}}
+            <p>{{this}}</p>
+          {{/each}}
+        {{else}}
+          <p>¡Gracias por su compra!</p>
+        {{/if}}
+      </footer>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,289 @@
+<html lang='es'>
+  <head>
+    <meta charset='UTF-8' />
+    <title>Factura {{sale.saleNumber}}</title>
+    <style>
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+          'Helvetica Neue', Arial, sans-serif;
+        margin: 0;
+        font-size: 10px;
+        color: #333;
+      }
+      .invoice-container {
+        padding: 20mm 15mm;
+      }
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 25px;
+      }
+      .header .store-details {
+        width: 55%;
+      }
+      .header .invoice-details {
+        width: 40%;
+        text-align: right;
+      }
+      .store-logo img {
+        max-width: 180px;
+        max-height: 80px;
+        margin-bottom: 10px;
+      }
+      .store-details h1 {
+        font-size: 20px;
+        margin: 0;
+        color: #000;
+        font-weight: 600;
+      }
+      .store-details p {
+        margin: 1px 0;
+        line-height: 1.4;
+      }
+      .invoice-details h2 {
+        font-size: 28px;
+        margin: 0 0 10px 0;
+        color: #555;
+        text-transform: uppercase;
+        font-weight: 300;
+      }
+      .invoice-details .detail-item {
+        margin-bottom: 4px;
+      }
+      .invoice-details .label {
+        font-weight: 600;
+      }
+      .parties {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 25px;
+        padding-bottom: 15px;
+        border-bottom: 1px solid #eee;
+      }
+      .customer-details {
+        width: 50%;
+      }
+      .customer-details h3 {
+        margin-top: 0;
+        font-size: 12px;
+        margin-bottom: 5px;
+        color: #555;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      .items-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 20px;
+      }
+      .items-table th,
+      .items-table td {
+        padding: 8px;
+        text-align: left;
+        border-bottom: 1px solid #eee;
+      }
+      .items-table thead th {
+        background-color: #f7f7f7;
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 9px;
+      }
+      .items-table .text-right {
+        text-align: right;
+      }
+      .items-table .text-center {
+        text-align: center;
+      }
+      .items-table .item-description small {
+        color: #666;
+        font-size: 9px;
+      }
+      .totals-section {
+        display: flex;
+        justify-content: flex-end;
+      }
+      .totals-table {
+        width: 45%;
+      }
+      .totals-table td {
+        padding: 6px 8px;
+      }
+      .totals-table .label {
+        text-align: right;
+        font-weight: 600;
+        color: #555;
+      }
+      .totals-table .value {
+        text-align: right;
+      }
+      .totals-table .grand-total td {
+        font-size: 14px;
+        font-weight: bold;
+        padding-top: 10px;
+        border-top: 2px solid #333;
+      }
+      .payment-details,
+      .footer-notes {
+        margin-top: 30px;
+        border-top: 1px solid #eee;
+        padding-top: 10px;
+        font-size: 9px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class='invoice-container'>
+
+      <header class='header'>
+        <div class='store-details'>
+          {{#if store.logoUrl}}
+            <div class='store-logo'><img
+                src='{{store.logoUrl}}'
+                alt='Logo {{store.name}}'
+              /></div>
+          {{else}}
+            <h1>{{store.name}}</h1>
+          {{/if}}
+          <p>{{store.address}}</p>
+          <p>RNC: {{store.rnc}}</p>
+          <p>Tel: {{store.phone}} | Email: {{store.email}}</p>
+        </div>
+        <div class='invoice-details'>
+          <h2>Factura</h2>
+          <div class='detail-item'><span class='label'>Factura #:</span>
+            {{sale.ncf}}</div>
+          <div class='detail-item'><span class='label'>Venta #:</span>
+            {{sale.saleNumber}}</div>
+          <div class='detail-item'><span class='label'>Fecha:</span>
+            {{formatDate sale.saleDate 'dd/MM/yyyy'}}</div>
+          <div class='detail-item'><span class='label'>Vendedor:</span>
+            {{sale.salespersonName}}</div>
+        </div>
+      </header>
+
+      <section class='parties'>
+        <div class='customer-details'>
+          <h3>Facturar a:</h3>
+          {{#if sale.customerName}}
+            <p><strong>{{sale.customerName}}</strong></p>
+            {{#if sale.customerRnc}}<p>RNC/Cédula:
+                {{sale.customerRnc}}</p>{{/if}}
+            {{#if sale.customerAddress}}<p>{{sale.customerAddress}}</p>{{/if}}
+            {{#if sale.customerPhone}}<p>Tel: {{sale.customerPhone}}</p>{{/if}}
+          {{else}}
+            <p>Cliente Genérico</p>
+          {{/if}}
+        </div>
+      </section>
+
+      <section>
+        <table class='items-table'>
+          <thead>
+            <tr>
+              <th style='width:50%;'>Descripción</th>
+              <th class='text-center' style='width:10%;'>Cant.</th>
+              <th class='text-right' style='width:15%;'>P. Unit.</th>
+              <th class='text-right' style='width:10%;'>Desc.</th>
+              <th class='text-right' style='width:15%;'>Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{#each sale.lines}}
+              <tr>
+                <td class='item-description'>
+                  <strong>{{this.productName}}</strong>
+                  <br />
+                  <small>SKU:
+                    {{this.productSku}}
+                    {{#if this.imei}} | S/N: {{this.imei}}{{/if}}</small>
+                  {{#if this.miscDescription}}<br /><small
+                    >{{this.miscDescription}}</small>{{/if}}
+                </td>
+                <td class='text-center'>{{this.quantity}}</td>
+                <td class='text-right'>{{formatCurrency
+                    @root.currencySymbol
+                    this.unitPrice
+                  }}</td>
+                <td class='text-right'>{{formatCurrency
+                    @root.currencySymbol
+                    this.lineDiscountAmount
+                  }}</td>
+                <td class='text-right'>{{formatCurrency
+                    @root.currencySymbol
+                    this.lineTotalAfterTax
+                  }}</td>
+              </tr>
+            {{/each}}
+          </tbody>
+        </table>
+      </section>
+
+      <section class='totals-section'>
+        <table class='totals-table'>
+          <tr>
+            <td class='label'>Subtotal:</td>
+            <td class='value'>{{formatCurrency
+                currencySymbol
+                sale.subTotalAfterLineDiscounts
+              }}</td>
+          </tr>
+          {{#if (gt sale.discountOnTotalAmount 0)}}
+            <tr>
+              <td class='label'>Descuento General:</td>
+              <td class='value'>-{{formatCurrency
+                  currencySymbol
+                  sale.discountOnTotalAmount
+                }}</td>
+            </tr>
+          {{/if}}
+          <tr>
+            <td class='label'>Base Imponible:</td>
+            <td class='value'>{{formatCurrency
+                currencySymbol
+                sale.taxableAmount
+              }}</td>
+          </tr>
+          <tr>
+            <td class='label'>Impuestos ({{multiply saleTaxRate 100}}%):</td>
+            <td class='value'>{{formatCurrency
+                currencySymbol
+                sale.taxTotal
+              }}</td>
+          </tr>
+          <tr class='grand-total'>
+            <td class='label'>TOTAL:</td>
+            <td class='value'>{{formatCurrency
+                currencySymbol
+                sale.totalAmount
+              }}</td>
+          </tr>
+        </table>
+      </section>
+
+      {{#if sale.payments.length}}
+        <section class='payment-details'>
+          <h4>Detalles del Pago</h4>
+          {{#each sale.payments}}
+            <p>{{lookup @root.paymentMethodLabels this.paymentMethod}}:
+              {{formatCurrency @root.currencySymbol this.amount}}</p>
+          {{/each}}
+          {{#if (gt sale.changeGiven 0)}}
+            <p>Cambio Entregado:
+              {{formatCurrency currencySymbol sale.changeGiven}}</p>
+          {{/if}}
+        </section>
+      {{/if}}
+
+      {{#if store.receiptFooterNotes}}
+        <footer class='footer-notes'>
+          {{#each (split store.receiptFooterNotes '\n')}}
+            <p>{{this}}</p>
+          {{/each}}
+        </footer>
+      {{/if}}
+
+    </div>
+  </body>
+</html>

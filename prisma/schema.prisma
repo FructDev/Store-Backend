@@ -1,0 +1,909 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  // output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED
+}
+
+// --- Modelo para la Tienda/Negocio ---
+model Store {
+  id        String   @id @default(cuid())
+  name      String   // Nombre de la tienda (requerido)
+  address   String?
+  phone     String?
+  // Podríamos añadir más campos específicos de la tienda aquí (ej. logo_url, configuraciones, etc.)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relación uno a muchos con Usuarios (una tienda tiene muchos usuarios)
+  users User[]
+
+  acceptedPaymentMethods PaymentMethod[] // Array de Enums
+
+  defaultReturnLocationId  String?   @unique // @unique si una ubicación solo puede ser default para una tienda para este propósito
+  defaultReturnLocation    InventoryLocation? @relation("StoreDefaultReturnLocation", fields: [defaultReturnLocationId], references: [id], onDelete: SetNull)
+
+  defaultPoReceiveLocationId String?   @unique // @unique si una ubicación solo puede ser default para una tienda para este propósito
+  defaultPoReceiveLocation   InventoryLocation? @relation("StoreDefaultPoReceiveLocation", fields: [defaultPoReceiveLocationId], references: [id], onDelete: SetNull)
+
+  // --- Relaciones futuras ---
+  // products Product[] // Descomentar cuando creemos el modelo Product
+  customers Customer[]
+  sales             Sale[]   @relation("StoreSales")
+  payments  SalePayment[]
+  // repairs Repair[]   // Descomentar cuando creemos el modelo Repair
+  repairOrders RepairOrder[]
+
+  @@map("stores") // Mapea al nombre de tabla 'stores' en la DB
+  Category Category[]
+  Supplier Supplier[]
+  Product Product[]
+  InventoryLocation InventoryLocation[]
+  InventoryItem InventoryItem[]
+  StockMovement StockMovement[]
+  PurchaseOrder PurchaseOrder[]
+  BundleComponent BundleComponent[]
+  // Sale Sale[]
+  defaultTaxRate  Decimal? @default(0.18) @db.Decimal(5, 4)
+  StoreCounter StoreCounter[]
+  SaleReturn SaleReturn[]
+
+  rnc                 String?   @db.VarChar(20)    // Para el RNC/ID Fiscal de la tienda
+  logoUrl             String?   @db.VarChar(255) // URL del logo de la tienda
+  receiptFooterNotes  String?   @db.Text  
+
+    // --- NUEVOS CAMPOS PARA CONFIGURACIÓN ---
+  contactEmail String? // Email de contacto público de la tienda
+  website      String? // Sitio web de la tienda
+  currencySymbol String? @default("RD$") // Símbolo de moneda (ej. "$", "€")
+  quoteTerms   String? @db.Text    // Términos y condiciones para cotizaciones
+  repairTerms  String? @db.Text    // Términos y condiciones para reparaciones
+  defaultRepairWarrantyDays Int? @default(30) // Garantía por defecto para reparaciones (en días)
+  // --- FIN NUEVOS CAMPOS ---
+  StockCount StockCount[] @relation("StoreStockCounts")
+}
+
+model StoreCounter {
+  storeId     String @id // Relacionado 1 a 1 con Store
+  store       Store  @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  lastSaleNumber Int    @default(0) // Último número de venta usado
+  saleNumberPrefix String @default("VTA-")
+  saleNumberPadding Int   @default(5)
+  // Podríamos añadir lastPoNumber, lastRepairNumber, etc. aquí
+  lastRepairNumber Int @default(0)
+  repairNumberPrefix String @default("REP-")
+  repairNumberPadding Int   @default(5)
+
+  lastPoNumber       Int    @default(0)
+  poNumberPrefix     String @default("PO-")
+  poNumberPadding    Int    @default(5)
+
+  updatedAt DateTime @updatedAt
+
+  lastStockCountNumber Int    @default(0)
+  stockCountNumberPrefix String @default("SC-") // SC por Stock Count
+  stockCountNumberPadding Int @default(5)
+
+  @@map("store_counters")
+}
+
+// --- Modelo para Usuarios (Empleados) ---
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique // Email único en todo el sistema para simplificar login
+  password  String   // Contraseña hasheada
+  firstName String?
+  lastName  String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // --- Vinculo con Store (Cada usuario pertenece a UNA tienda) ---
+  storeId   String?
+  store     Store?    @relation(fields: [storeId], references: [id], onDelete: Cascade) // onDelete: Cascade significa que si se borra la tienda, se borran sus usuarios. Podríamos cambiarlo a Restrict si preferimos evitarlo.
+
+  // --- Vinculo con Roles (Un usuario puede tener múltiples roles) ---
+  roles Role[] @relation("UserRoles")
+
+  sales    Sale[]          // Ventas realizadas por este usuario
+  payments SalePayment[]   // Pagos procesados por este usuario
+
+  @@map("users")
+  StockMovement StockMovement[]
+  PurchaseOrder PurchaseOrder[]
+  SaleReturn SaleReturn[]
+  RepairStatusHistory RepairStatusHistory[] @relation("StatusChangedBy")
+  receivedRepairs RepairOrder[] @relation("ReceivedRepairs")
+  assignedRepairs RepairOrder[] @relation("AssignedRepairs")
+  StockCount StockCount[] @relation("UserStockCounts")
+}
+
+// --- Modelo para Roles ---
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique // Ej: "STORE_ADMIN", "SALESPERSON", "TECHNICIAN"
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users User[] @relation("UserRoles")         // Relación con User
+  permissions Permission[] @relation("RolePermissions") // Relación con Permission
+
+  @@map("roles")
+}
+
+// --- Modelo para Permisos ---
+model Permission {
+  id          String   @id @default(cuid())
+  action      String   // Ej: "manage", "create", "read", "update", "delete"
+  subject     String   // Ej: "User", "Product", "Sale", "Inventory"
+  description String?
+  @@unique([action, subject]) // Combinación única
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  roles Role[] @relation("RolePermissions") // Relación con Role
+
+  @@map("permissions")
+}
+
+// ==========================================
+// === INICIO: MODELOS MÓDULO INVENTARIO ===
+// ==========================================
+
+model Category {
+  id        String   @id @default(cuid())
+  name      String
+  storeId   String // Each store manages its categories
+  store     Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  products  Product[]
+  description String? 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([storeId, name]) // Name unique within a store
+  @@map("categories")
+}
+
+model Supplier {
+  id        String   @id @default(cuid())
+  name      String
+  contactName String?
+  email     String?  @unique // Email could be unique globally or just informative
+  phone     String?
+  address   String?
+  notes     String?
+  storeId   String // Each store manages its suppliers
+  store     Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  products  Product[] // Optional default supplier link from Product
+  purchaseOrders PurchaseOrder[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([storeId, name])
+  @@map("suppliers")
+}
+
+// Product Definition (Template)
+model Product {
+  id          String   @id @default(cuid())
+  name        String   // e.g., "iPhone 15 Pro - 256GB - Negro Titanio", "Cable USB-C Samsung EP-DN980"
+  description String?
+  sku         String?  // Stock Keeping Unit - Should be unique within the store
+  barcode     String?  // UPC/EAN
+  brand       String?  // Marca
+  model       String?  // Modelo específico
+
+  productType ProductType @default(GENERAL) // NEW, USED, REFURBISHED, ACCESSORY, SPARE_PART, SERVICE, BUNDLE, OTHER
+  tracksImei  Boolean  @default(false) // Requires unique IMEI/Serial tracking?
+
+  // Default pricing (can be overridden at InventoryItem or SaleLine level)
+  costPrice   Decimal? @db.Decimal(10, 2) // Average or standard cost
+  sellingPrice Decimal @db.Decimal(10, 2) // Standard selling price
+
+  // Stock management hints
+  reorderLevel Int?    // Alert level
+  idealStockLevel Int? // Target level
+
+  // Flexible Attributes (Example using JSON)
+  attributes  Json?    // Store { "color": "Negro Titanio", "capacity": "256GB", "compatibility": ["iPhone 14", "iPhone 15"] }
+
+  // Relationships
+  storeId     String
+  store       Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  categoryId  String?
+  category    Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  supplierId  String?  // Preferred/default supplier
+  supplier    Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+
+  // Links to related entities
+  inventoryItems     InventoryItem[]     // Actual stock instances
+  bundleComponents   BundleComponent[]   @relation("BundleProduct") // Components if this IS a bundle
+  partOfBundles      BundleComponent[]   @relation("ComponentProduct") // Bundles this product is PART OF
+  purchaseOrderLines PurchaseOrderLine[] // POs where this product was ordered
+  saleLines          SaleLine[]          // Sales where this product was sold
+  stockMovements     StockMovement[]     // History of movements for this product type
+
+  isActive    Boolean  @default(true) // Can be discontinued
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([storeId, sku]) // SKU must be unique within a store
+  @@index([storeId, name]) // Index for searching/sorting by name within store
+  @@index([storeId, productType])
+  @@map("products")
+  RepairLine RepairLine[]
+  StockCountLine StockCountLine[]
+}
+
+enum ProductType {
+  NEW
+  USED
+  REFURBISHED
+  ACCESSORY
+  SPARE_PART
+  SERVICE // e.g., Repair service fee, setup fee
+  BUNDLE  // Represents a kit/bundle product itself
+  OTHER
+  GENERAL
+}
+
+model InventoryLocation {
+    id          String   @id @default(cuid())
+    name        String   // e.g., "Piso de Venta", "Almacén Trasero", "Banco Técnico", "En Reparación", "Consignación"
+    description String?
+    isDefault   Boolean  @default(false) // Default location for receiving POs?
+    isActive    Boolean  @default(true)
+    storeId     String
+    store       Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+    // Stock items currently at this location
+    stockItems  InventoryItem[]
+
+  storeAsDefaultReturnLocation    Store? @relation("StoreDefaultReturnLocation")
+  storeAsDefaultPoReceiveLocation Store? @relation("StoreDefaultPoReceiveLocation")
+
+    // Stock movements originating from or going to this location
+    movementsFrom StockMovement[] @relation("MovementFrom")
+    movementsTo   StockMovement[] @relation("MovementTo")
+
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+
+    @@unique([storeId, name]) // Nombre único por tienda
+    @@map("inventory_locations")
+    SaleReturnLine SaleReturnLine[]
+    StockCount StockCount[] @relation("LocationStockCounts")
+}
+
+// Physical Stock Item / Batch
+model InventoryItem {
+  id          String    @id @default(cuid())
+  productId   String    // Link to the product definition
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  storeId     String    // Denormalized for easier querying and security filtering
+  store       Store     @relation(fields: [storeId], references: [id], onDelete: NoAction) // Avoid multiple cascade paths
+
+  imei        String?   // IMEI / Serial Number (Must be unique globally if used)
+  quantity    Int       // Qty for non-serialized items (product.tracksImei=false). Should be 1 if imei is set.
+  condition   String?   // e.g., "Nuevo", "Usado-A", "Usado-B", "Remanufacturado" (Mainly for USED/REFURBISHED product types)
+  status      InventoryItemStatus @default(AVAILABLE) // Current status
+
+  costPrice   Decimal   @db.Decimal(10, 2) // Actual cost for this item/batch
+
+  locationId  String    // Current physical/logical location
+  location    InventoryLocation @relation(fields: [locationId], references: [id], onDelete: Restrict) // Don't delete location if stock exists
+
+  // Traceability Links
+  purchaseOrderLineId String? // Came from which PO Line?
+  purchaseOrderLine   PurchaseOrderLine? @relation(fields: [purchaseOrderLineId], references: [id], onDelete: SetNull)
+  tradeInSaleId       String? // Came from which Sale (as trade-in)? Will link later
+  // tradeInSale      Sale?    @relation("TradeInItem", fields: [tradeInSaleId], references: [id], onDelete: SetNull)
+
+  // Disposition Links (mutually exclusive ideally)
+  saleLines SaleLine[] 
+
+  repairPartUsageId   String? @unique // Used in which Repair? Will link later
+  // repairPartUsage  RepairPartUsage?
+
+  // repairLineId String?    @unique // ID de la línea de reparación donde se usó
+  // repairLine   RepairLine?
+  repairLinesLinkedTo RepairLine[] @relation("InventoryItemUsedInRepairLine")
+
+  adjustmentId        String? // Related to which Stock Adjustment? Will link later
+
+  // Dates
+  receivedAt DateTime @default(now()) // When entered system/location
+  soldAt     DateTime?
+  usedAt     DateTime? // e.g., Used in repair
+
+  notes      String?   // Specific notes (scratches, etc.)
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([imei]) // IMEI único globalmente si se usa. Considerar nulls unique? Depende de DB.
+  @@index([storeId, productId, status])
+  @@index([locationId])
+  @@map("inventory_items")
+  StockMovement StockMovement[]
+  StockCountLine StockCountLine[]
+}
+
+enum InventoryItemStatus {
+  AVAILABLE     // Ready to be sold or used
+  RESERVED      // Held for a specific sale, repair, or transfer
+  SOLD          // Sold to a customer
+  USED_IN_REPAIR // Consumed as a spare part
+  RETURNED      // Returned by customer, needs inspection
+  DAMAGED       // Damaged, not usable
+  IN_TRANSIT    // Being moved between locations
+  CONSIGNMENT   // In stock but owned by a third party
+  REMOVED       // Removed due to manual adjustment (loss, etc.)
+}
+
+
+// Audit Trail for Stock Changes
+model StockMovement {
+  id              String    @id @default(cuid())
+  productId       String    // Link to the product definition
+  product         Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  inventoryItemId String?   // Link to specific item if serialized/relevant
+  inventoryItem   InventoryItem? @relation(fields: [inventoryItemId], references: [id], onDelete: SetNull) // Can be null if adjusting non-specific qty
+  storeId         String
+  store           Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  costAtTimeOfMovement Decimal?  
+
+  quantityChange  Int       // Positive (+) for addition, Negative (-) for removal
+  movementType    MovementType
+  fromLocationId  String?
+  fromLocation    InventoryLocation? @relation("MovementFrom", fields: [fromLocationId], references: [id], onDelete: SetNull)
+  toLocationId    String?
+  toLocation      InventoryLocation? @relation("MovementTo", fields: [toLocationId], references: [id], onDelete: SetNull)
+
+  referenceId     String?   // Sale ID, PO ID, Transfer ID, Repair ID, Adjustment ID, User ID (for trade-in)
+  referenceType   String?   // e.g., "SALE", "PO", "TRANSFER", "REPAIR", "ADJUSTMENT", "TRADE_IN"
+  notes           String?
+  timestamp       DateTime  @default(now())
+  userId          String    // User who triggered the movement
+  user            User      @relation(fields: [userId], references: [id], onDelete: Restrict) // Must know who did it
+
+  @@index([productId, storeId, timestamp])
+  @@index([inventoryItemId])
+  @@map("stock_movements")
+}
+
+enum MovementType {
+  PURCHASE_RECEIPT // Receiving stock from PO
+  SALE             // Selling stock to customer
+  RETURN_RECEIPT   // Receiving returned item from customer
+  TRANSFER_OUT     // Moving stock to another location
+  TRANSFER_IN      // Receiving stock from another location
+  ADJUSTMENT_ADD   // Manual adjustment - Increase (+)
+  ADJUSTMENT_REMOVE // Manual adjustment - Decrease (-)
+  REPAIR_USAGE     // Using a spare part in a repair
+  TRADE_IN_RECEIPT // Receiving used item from customer
+  BUNDLE_PACK      // Assembling a bundle (removes components)
+  BUNDLE_UNPACK    // Disassembling a bundle (adds components)
+  BUNDLE_PACK_COMPONENT_OUT // Componente sale de stock para ensamblar
+  BUNDLE_PACK_ASSEMBLY_IN   // Bundle ensamblado entra a stock
+  BUNDLE_UNPACK_OUT         // Bundle sale de stock para desensamblar
+  BUNDLE_UNPACK_COMPONENT_IN // Componente vuelve a stock por desensamblaje
+  INITIAL_STOCK    // For initial data load
+  SALE_CANCELLATION // Cancelling a sale (returns stock)
+  REPAIR_STOCK_REVERSAL 
+}
+
+
+// Procurement
+model PurchaseOrder {
+  id          String   @id @default(cuid())
+  poNumber    String   // e.g., PO-2025-001 (Store-specific sequence?)
+  storeId     String
+  store       Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  supplierId  String
+  supplier    Supplier @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  status      POStatus @default(DRAFT)
+  orderDate   DateTime @default(now())
+  expectedDate DateTime?
+  receivedDate DateTime? // Date fully received
+  notes       String?
+  shippingCost Decimal? @db.Decimal(10, 2)
+  totalAmount Decimal? @db.Decimal(12, 2) // Calculated based on lines + shipping?
+
+  lines       PurchaseOrderLine[]
+  userId      String   // User who created the PO
+  user        User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([storeId, poNumber])
+  @@map("purchase_orders")
+}
+
+enum POStatus {
+  DRAFT      // Being created
+  ORDERED    // Sent to supplier
+  PARTIALLY_RECEIVED
+  RECEIVED   // Fully received
+  CANCELLED
+  CLOSED     // Finalized after receipt/billing, opcional
+}
+
+model PurchaseOrderLine {
+  id               String   @id @default(cuid())
+  purchaseOrderId  String
+  purchaseOrder    PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  productId        String
+  product          Product  @relation(fields: [productId], references: [id], onDelete: Restrict) // Qué producto se pidió
+
+  orderedQuantity  Int      // Cantidad pedida
+  receivedQuantity Int      @default(0) // Cantidad recibida hasta ahora
+  unitCost         Decimal  @db.Decimal(10, 2) // Costo unitario para ESTA línea específica
+
+  // Link a los items de inventario que se recibieron contra esta línea
+  receivedItems    InventoryItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("purchase_order_lines")
+}
+
+// Bundles / Kits
+model BundleComponent {
+    id                 String   @id @default(cuid())
+    bundleProductId    String   // ID del Producto que es el Bundle (ProductType=BUNDLE)
+    bundleProduct      Product  @relation("BundleProduct", fields: [bundleProductId], references: [id], onDelete: Cascade)
+    componentProductId String   // ID del Producto componente
+    componentProduct   Product  @relation("ComponentProduct", fields: [componentProductId], references: [id], onDelete: Cascade)
+    quantity           Int      // Cuántas unidades del componente van en UN bundle
+
+    storeId            String   // La definición del bundle es por tienda
+    store              Store    @relation(fields: [storeId], references: [id], onDelete: NoAction) // Evitar cascade delete
+
+    @@unique([storeId, bundleProductId, componentProductId]) // Un componente solo puede estar una vez por bundle
+    @@map("bundle_components")
+}
+
+// === FIN: Modelos Módulo Inventario ===
+
+// ====================================
+// === INICIO: Modelos Módulo Ventas ===
+// ====================================
+
+// --- Modelo Básico de Cliente ---
+// Necesario para vincular ventas. Se puede expandir mucho más.
+model Customer {
+  id        String   @id @default(cuid())
+  firstName String?
+  lastName  String?
+  email     String?  // Considerar @@unique([storeId, email]) si es único por tienda
+  phone     String?
+  address   String?
+  rnc     String?  @db.VarChar(20)
+  // rnc       String? // RNC/Cédula (Importante en RD)
+  isActive  Boolean  @default(true)
+  storeId   String
+  store     Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  sales     Sale[]   // Ventas asociadas a este cliente
+  repairOrders RepairOrder[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([storeId, phone]) // Índice útil
+  @@index([storeId, isActive])
+  @@map("customers")
+}
+
+
+model Sale {
+  id              String   @id @default(cuid())
+  saleNumber      String
+  storeId         String
+  store           Store    @relation("StoreSales", fields: [storeId], references: [id], onDelete: Cascade)
+  customerId      String?
+  customer        Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  status          SaleStatus @default(COMPLETED)
+  saleDate        DateTime @default(now())
+  notes           String?
+
+  subTotal        Decimal  @db.Decimal(12, 2) @default(0)
+  discountOnTotalType   DiscountType?            // Tipo de descuento (PERCENTAGE o FIXED)
+  discountOnTotalValue  Decimal?                 @db.Decimal(12, 2) // Valor del descuento (ej. 10 ó 50.00)
+  discountTotal   Decimal  @db.Decimal(12, 2) @default(0)
+  taxableAmount         Decimal? @db.Decimal(12, 2) @default(0)
+  taxTotal        Decimal  @db.Decimal(12, 2) @default(0)
+  totalAmount     Decimal  @db.Decimal(12, 2) @default(0)
+  amountPaid      Decimal  @db.Decimal(12, 2) @default(0)
+  amountDue       Decimal  @db.Decimal(12, 2) @default(0)
+
+  changeGiven       Decimal?
+  ncf             String?
+  ncfExpiration   DateTime?
+
+  // --- Relaciones (Todas DENTRO del modelo y ANTES de @@map) ---
+  lines           SaleLine[]
+  payments        SalePayment[]
+  repairOrderId   String?      @unique
+  repairOrder     RepairOrder? @relation("SaleForRepair", fields: [repairOrderId], references: [id], onDelete: SetNull)
+  returns         SaleReturn[] @relation("OriginalSaleReturns") // Esta es la relación correcta a SaleReturn
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // --- Atributos de Bloque VAN AL FINAL ---
+  @@unique([storeId, saleNumber])
+  @@index([storeId, saleDate])
+  @@index([storeId, customerId])
+  @@index([storeId, userId])
+  @@map("sales")
+}
+
+enum SaleStatus {
+  DRAFT           // Venta iniciada pero no completada (ej. carrito abandonado en POS)
+  PENDING_PAYMENT // Completada pero con saldo pendiente (crédito, apartado)
+  COMPLETED       // Pagada y finalizada (stock descontado)
+  CANCELLED       // Anulada antes de finalizar/pagar
+  RETURNED        // Completamente devuelta
+  PARTIALLY_RETURNED // Devolución parcial
+}
+
+// --- Línea de Detalle de la Venta ---
+model SaleLine {
+  id          String   @id @default(cuid())
+  saleId      String
+  sale        Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade) // Si se borra la venta, se borran sus líneas
+  lineNumber  Int      // Orden de la línea (1, 2, 3...)
+
+  // Opción 1: Producto del Catálogo
+  productId   String?  // ID del Product (NULL si es Venta Libre)
+  product     Product? @relation(fields: [productId], references: [id], onDelete: Restrict) // No borrar producto si fue vendido
+
+  // Opción 2: Venta Libre (Item Misceláneo)
+  miscItemDescription String? // Descripción (ej. "Reparación Menor", "Tornillo específico") - Requerido si productId es NULL
+
+  // Común a ambas opciones
+  quantity    Int      // Cantidad vendida
+  unitPrice   Decimal  @db.Decimal(10, 2) // Precio unitario AL MOMENTO de la venta
+  unitCost    Decimal? @db.Decimal(10, 2) // Costo unitario AL MOMENTO de la venta (para calcular margen)
+
+  discountType        DiscountType? // Enum: PERCENTAGE, FIXED
+  discountValue       Decimal? 
+  discountAmount Decimal @db.Decimal(10, 2) @default(0) // Descuento aplicado a esta línea
+  taxAmount      Decimal @db.Decimal(10, 2) @default(0) // Impuesto calculado para esta línea
+  lineTotal      Decimal @db.Decimal(12, 2) // Calculado: (unitPrice * quantity) - discountAmount // ¿Impuesto se suma aquí o al final? Depende de cómo se muestre.
+
+  // Vínculo con el Stock Físico (si aplica y es necesario rastrear)
+  inventoryItemId String?        
+  inventoryItem   InventoryItem? @relation(fields: [inventoryItemId], references: [id], onDelete: SetNull)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // TODO: Añadir constraint a nivel DB (si es posible) o validación en servicio:
+  // CHECK ((productId IS NOT NULL AND miscItemDescription IS NULL) OR (productId IS NULL AND miscItemDescription IS NOT NULL))
+
+  @@index([saleId])
+  @@index([productId])
+  @@index([inventoryItemId])
+  @@map("sale_lines")
+  SaleReturnLine SaleReturnLine[]
+}
+
+// --- Pagos Realizados para una Venta ---
+model SalePayment {
+  id            String      @id @default(cuid())
+  saleId        String
+  sale          Sale        @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  storeId       String      // Denormalizado para filtros rápidos
+  store         Store       @relation(fields: [storeId], references: [id], onDelete: NoAction)
+
+  paymentMethod PaymentMethod // Forma de pago (ver Enum abajo)
+  amount        Decimal     @db.Decimal(12, 2) // Monto de este pago
+  paymentDate   DateTime    @default(now()) // Fecha/Hora del pago
+  reference     String?     // Ref. Tarjeta, No. Cheque, Confirmación Transf., etc.
+  notes         String?     // Notas sobre el pago
+  userId        String      // Usuario que registró el pago
+  user          User        @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  amountTendered Decimal?    @db.Decimal(12, 2) // Monto entregado por el cliente (para efectivo)
+  changeGiven   Decimal?    @db.Decimal(12, 2) // Cambio devuelto al cliente (para efectivo)
+  cardLast4     String?     // Últimos 4 dígitos de tarjeta
+  cardAuthCode  String?     // Código de autorización de tarjeta
+  transferConfirmation String? // Confirmación de transferencia
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([saleId])
+  @@index([storeId, paymentDate])
+  @@map("sale_payments")
+}
+
+enum PaymentMethod {
+  CASH          // Efectivo
+  CARD_DEBIT    // Tarjeta Débito
+  CARD_CREDIT   // Tarjeta Crédito
+  TRANSFER      // Transferencia Bancaria
+  MOBILE_WALLET // Billetera Móvil (ej. PayPal, app local)
+  STORE_CREDIT  // Crédito de Tienda (requiere manejar balance de cliente)
+  GIFT_CARD     // Tarjeta de Regalo
+  OTHER         // Otro
+}
+
+
+// ==================================
+// === FIN: Modelos Módulo Ventas ===
+// ==================================
+
+// --- Modelos para Devoluciones de Venta ---
+
+model SaleReturn {
+  id            String   @id @default(cuid())
+  returnNumber  String   // Número de Devolución (secuencia por tienda?)
+  originalSaleId String   // Venta original sobre la que se hace la devolución
+  originalSale   Sale     @relation("OriginalSaleReturns", fields: [originalSaleId], references: [id], onDelete: Cascade) // Si se borra la venta, se borra la devolución? O Restrict? Cascade parece razonable.
+  storeId       String
+  store         Store    @relation(fields: [storeId], references: [id], onDelete: NoAction) // Evitar cascade múltiple
+  userId        String   // Usuario que procesó la devolución
+  user          User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  returnDate    DateTime @default(now())
+  reason        String?  // Razón de la devolución
+  notes         String?  // Notas adicionales
+
+  totalRefundAmount Decimal @db.Decimal(12, 2) @default(0) // Monto total reembolsado
+  // totalRestockedValue Decimal? @db.Decimal(12, 2) // Valor de costo del stock reingresado (opcional)
+
+  lines         SaleReturnLine[] // Líneas de detalle de la devolución
+  // refunds       Refund[] // Podríamos tener modelo Refund si el reembolso es complejo
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([storeId, returnNumber])
+  @@index([originalSaleId])
+  @@map("sale_returns")
+  // Sale Sale[] @relation("OriginalSaleReturns")
+}
+
+model SaleReturnLine {
+  id              String   @id @default(cuid())
+  saleReturnId    String
+  saleReturn      SaleReturn @relation(fields: [saleReturnId], references: [id], onDelete: Cascade)
+  originalSaleLineId String // Línea de la venta original que se devuelve
+  originalSaleLine SaleLine @relation(fields: [originalSaleLineId], references: [id], onDelete: Restrict) // No borrar línea original si hay devolución
+
+  returnQuantity  Int      // Cantidad devuelta (para ítems no serializados)
+  returnedCondition String?  // Condición en la que se devolvió (ej. "Vendible", "Dañado")
+  restockLocationId String? // ID de la ubicación donde se reingresó el stock (si aplica)
+  restockLocation   InventoryLocation? @relation(fields: [restockLocationId], references: [id], onDelete: SetNull) 
+
+  // inventoryItemId String? // ID del InventoryItem reingresado (se puede obtener de originalSaleLine.inventoryItemId?)
+  // stockMovementId String? // ID del StockMovement de reingreso
+
+  refundAmount    Decimal @db.Decimal(12, 2) @default(0) // Monto reembolsado por esta línea específica
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("sale_return_lines")
+}
+
+// =======================================
+// ===  Modelos Módulo Reparaciones ===
+// =======================================
+
+model RepairOrder {
+  id              String    @id @default(cuid())
+  repairNumber    String    // Número de Orden (ej. REP-2025-0001) - Secuencia por tienda?
+  storeId         String
+  store           Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  customerId      String?   // Cliente (Idealmente requerido, pero puede ser anónimo al inicio?)
+  customer        Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  intakeChecklist     Json? // Checklist de recepción
+  postRepairChecklist Json? // Checklist post-reparación
+
+  // --- Info del Dispositivo ---
+  deviceBrand     String    // Marca
+  deviceModel     String    // Modelo
+  deviceImei      String?   // IMEI / Número de Serie (¡CRUCIAL!)
+  deviceColor     String?
+  devicePassword  String?   // Contraseña/Patrón (¡ENCRIPTAR SI SE GUARDA!) - Considerar implicaciones de privacidad
+  accessoriesReceived String? // Lista o JSON de accesorios (SIM, SD, Cargador, Caja...)
+
+  // --- Recepción ---
+  reportedIssue   String    // Problema reportado por el cliente (texto largo)
+  intakeNotes     String?   // Notas del técnico al recibir (estado visual, daños, etc.)
+  // intakeChecklist Json?  // Futuro: Checklist estructurado de recepción
+  receivedById    String    // Quién recibió
+  receivedBy      User      @relation("ReceivedRepairs", fields: [receivedById], references: [id], onDelete: Restrict)
+  receivedAt      DateTime  @default(now())
+
+  // --- Diagnóstico y Cotización ---
+  technicianId    String?   // Técnico asignado
+  technician      User?     @relation("AssignedRepairs", fields: [technicianId], references: [id], onDelete: SetNull)
+  diagnosticNotes String?   // Notas técnicas del diagnóstico (texto largo)
+  quotedAmount    Decimal?  @db.Decimal(10, 2) // Monto cotizado al cliente
+  quoteApproved   Boolean?  // null=Pendiente, true=Aprobado, false=Rechazado
+  quoteStatusDate DateTime? // Fecha de aprobación/rechazo
+  estimatedCompletionDate DateTime? // Fecha estimada de finalización
+
+  // --- Seguimiento ---
+  status          RepairStatus @default(RECEIVED) // Estado actual (ver Enum)
+  statusHistory   RepairStatusHistory[] // Historial de cambios de estado
+
+  // --- Finalización ---
+  completionNotes String?   // Notas del técnico al finalizar
+  // postRepairChecklist Json? // Futuro: Checklist de control de calidad
+  completedAt     DateTime? // Fecha/Hora de finalización real
+  warrantyPeriodDays Int?   // Garantía en días (ej. 30, 90)
+
+  // --- Vínculos ---
+  lines           RepairLine[] // Líneas de servicios y repuestos usados/cotizados
+  saleId          String?      @unique // ID de la Venta donde se facturó/cobró esta reparación
+  sale            Sale?        @relation("SaleForRepair")  // Relación 1 a 1 con la Venta final
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([storeId, repairNumber]) // Número de reparación único por tienda
+  @@index([storeId, status])
+  @@index([storeId, customerId])
+  @@index([storeId, technicianId])
+  @@index([deviceImei]) // Poder buscar por IMEI
+  @@map("repair_orders")
+  // Sale Sale[]
+}
+
+// Enum con estados posibles y claros del ciclo de reparación
+enum RepairStatus {
+  RECEIVED                // Recibido del cliente
+  DIAGNOSING              // En diagnóstico
+  QUOTE_PENDING           // Diagnóstico listo, pendiente generar/enviar cotización
+  AWAITING_QUOTE_APPROVAL // Cotización enviada, esperando respuesta
+  QUOTE_APPROVED         // Cotización aprobada por cliente
+  QUOTE_REJECTED          // Cliente rechazó
+  AWAITING_PARTS          // Aprobado, pero esperando repuestos
+  IN_REPAIR               // Reparación activa en progreso
+  ASSEMBLING              // Reensamblando dispositivo
+  TESTING_QC              // En pruebas / Control de Calidad
+  REPAIR_COMPLETED        // Reparación finalizada internamente
+  PENDING_PICKUP          // Listo y notificado al cliente para retiro
+  COMPLETED_PICKED_UP     // Entregado al cliente (y presumiblemente pagado)
+  CANCELLED               // Cancelado por cliente o tienda
+  UNREPAIRABLE            // No se pudo reparar / No vale la pena
+}
+
+// Tabla para auditar cambios de estado
+model RepairStatusHistory {
+  id            String   @id @default(cuid())
+  repairOrderId String
+  repairOrder   RepairOrder @relation(fields: [repairOrderId], references: [id], onDelete: Cascade)
+  status        RepairStatus // El estado AL QUE CAMBIÓ
+  changedAt     DateTime @default(now())
+  userId        String   // Quién hizo el cambio
+  user          User     @relation("StatusChangedBy", fields: [userId], references: [id], onDelete: Restrict)
+  notes         String?  // Notas sobre el cambio (ej. "Cliente aprobó por teléfono")
+
+  @@index([repairOrderId, changedAt])
+  @@map("repair_status_history")
+}
+
+// Líneas de detalle (Servicios aplicados o Repuestos usados)
+model RepairLine {
+  id            String   @id @default(cuid())
+  repairOrderId String
+  repairOrder   RepairOrder @relation(fields: [repairOrderId], references: [id], onDelete: Cascade)
+
+  // Opción 1: Producto del catálogo (Tipo: SERVICE o SPARE_PART)
+  productId     String?
+  product       Product?  @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  // Opción 2: Descripción manual (si no existe como producto)
+  miscDescription String? // ej. "Limpieza de contactos", "Resoldar componente X"
+
+  quantity      Int       // Cantidad (ej. 1 para servicio, o cantidad de repuestos)
+  unitPrice     Decimal   @db.Decimal(10, 2) // Precio cobrado al cliente por unidad
+  unitCost      Decimal?  @db.Decimal(10, 2) // Costo del repuesto (del InventoryItem) o costo estimado del servicio
+  lineTotal     Decimal   @db.Decimal(12, 2) // Calculado (quantity * unitPrice)
+
+  // Vínculo con el Stock si se usó un repuesto físico específico
+  inventoryItemId String?          // ID del InventoryItem consumido (si es serializado o un lote específico)
+ inventoryItem       InventoryItem? @relation("InventoryItemUsedInRepairLine", fields: [inventoryItemId], references: [id], onDelete: SetNull)
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // CHECK: productId O miscDescription debe existir
+  @@index([repairOrderId])
+  @@index([productId])
+  @@index([inventoryItemId])
+  @@map("repair_lines")
+}
+
+// =====================================
+// === FIN: Modelos Módulo Reparaciones ===
+// =====================================
+
+// --- Modelos para Conteos de Stock Físico ---
+
+enum StockCountStatus {
+  PENDING     // Conteo planificado o recién creado, aún no iniciado
+  IN_PROGRESS // Conteo activamente en proceso
+  COMPLETED   // Conteo finalizado, ajustes aplicados
+  CANCELLED   // Conteo cancelado antes de finalizar
+}
+
+model StockCount {
+  id                String    @id @default(cuid())
+  stockCountNumber  String?
+  storeId           String
+  store             Store     @relation("StoreStockCounts", fields: [storeId], references: [id], onDelete: Cascade)
+  userId            String
+  user              User      @relation("UserStockCounts", fields: [userId], references: [id], onDelete: Restrict)
+  locationId        String?
+  location          InventoryLocation? @relation("LocationStockCounts", fields: [locationId], references: [id], onDelete: SetNull)
+
+  status            StockCountStatus @default(PENDING)
+  initiatedAt       DateTime  @default(now())
+  completedAt       DateTime?
+  notes             String?
+
+  lines             StockCountLine[] // Esta relación a StockCountLine es para la lista de líneas del conteo
+
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([storeId, stockCountNumber])
+  @@map("stock_counts")
+}
+
+model StockCountLine {
+  id                String    @id @default(cuid())
+  stockCountId      String
+  stockCount        StockCount @relation(fields: [stockCountId], references: [id], onDelete: Cascade)
+
+  productId         String    // Producto que se está contando
+  product           Product   @relation(fields: [productId], references: [id], onDelete: Cascade) // O Restrict si no se debe borrar producto si está en conteo
+  inventoryItemId   String?   // Opcional: Si se cuenta un lote/item serializado específico
+  inventoryItem     InventoryItem? @relation(fields: [inventoryItemId], references: [id], onDelete: SetNull)
+
+  systemQuantity    Int       // Cantidad que el sistema REGISTRABA al INICIAR esta línea del conteo
+  countedQuantity   Int?      // Cantidad física contada por el usuario (null hasta que se cuente)
+  discrepancy       Int?      // Calculado: countedQuantity - systemQuantity
+
+  unitCostAtCount   Decimal?  @db.Decimal(10, 2) // Costo del item al momento del conteo (para valorar ajuste)
+  notes             String?   // Notas específicas de esta línea
+
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([stockCountId])
+  @@index([productId])
+  @@index([inventoryItemId])
+  @@map("stock_count_lines")
+}

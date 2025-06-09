@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Reporte de Ventas Detalladas</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; font-size: 10px; }
+        .report-header { text-align: center; margin-bottom: 20px; }
+        .report-header h1 { font-size: 18px; margin-bottom: 5px; }
+        .report-header p { font-size: 10px; margin: 2px 0; }
+        .filters { margin-bottom: 15px; padding: 10px; border: 1px solid #eee; font-size: 9px; }
+        .grand-totals { margin-bottom: 15px; padding: 10px; border: 1px solid #ddd; background-color: #f9f9f9;}
+        .grand-totals h3 { margin-top: 0; font-size: 12px; }
+        .grand-totals table { width: 100%; font-size: 9px; }
+        .grand-totals td { padding: 3px; }
+        .grand-totals .label { font-weight: bold; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 9px; }
+        th, td { border: 1px solid #ddd; padding: 6px; text-align: left; }
+        th { background-color: #f2f2f2; font-weight: bold; }
+        .text-right { text-align: right; }
+        .text-center { text-align: center; }
+        .sale-item { margin-bottom: 15px; page-break-inside: avoid; } /* Evitar cortes dentro de una venta */
+        .sale-item-header { background-color: #e9e9e9; padding: 5px; font-weight: bold; }
+        .lines-table th, .lines-table td { font-size: 8px; padding: 4px; }
+        .lines-table .profit { font-weight: bold; }
+        .footer { text-align: center; font-size: 8px; color: #777; position: fixed; bottom: 0; width: 100%; }
+         @page {
+            margin: 20mm 15mm; /* Ajustar márgenes para encabezado/pie de página de Puppeteer */
+            /* size: A4 portrait; */
+        }
+        /* Estilos para encabezado y pie de página de Puppeteer (si los usas) */
+        /* header, footer { display: none; } */ /* Oculta si Puppeteer los añade */
+    </style>
+</head>
+<body>
+    <div class="report-header">
+        <h1>{{storeName}} - Reporte de Ventas Detalladas</h1>
+        <p>Período: {{formatDate startDate "dd/MM/yyyy"}} - {{formatDate endDate "dd/MM/yyyy"}}</p>
+        <p>Generado el: {{formatDate now "dd/MM/yyyy HH:mm"}}</p>
+        </div>
+
+    {{#if reportData.reportGrandTotals}}
+    <div class="grand-totals">
+        <h3>Totales Generales del Período</h3>
+        <table>
+            <tr>
+                <td class="label">Total de Ventas (Cantidad):</td><td>{{reportData.reportGrandTotals.totalSalesCount}}</td>
+                <td class="label">Ingresos Totales:</td><td class="text-right">{{formatCurrency reportData.reportGrandTotals.totalRevenue currencySymbol}}</td>
+            </tr>
+            <tr>
+                <td class="label">Descuentos de Línea:</td><td class="text-right">{{formatCurrency reportData.reportGrandTotals.totalAllLineDiscounts currencySymbol}}</td>
+                <td class="label">Descuentos Generales:</td><td class="text-right">{{formatCurrency reportData.reportGrandTotals.totalOverallDiscounts currencySymbol}}</td>
+            </tr>
+             <tr>
+                <td class="label">Total Descuentos Netos:</td><td class="text-right">{{formatCurrency reportData.reportGrandTotals.totalNetDiscounts currencySymbol}}</td>
+                <td class="label">Impuestos Totales:</td><td class="text-right">{{formatCurrency reportData.reportGrandTotals.totalTaxes currencySymbol}}</td>
+            </tr>
+            <tr>
+                <td class="label">Costo Total de Bienes:</td><td class="text-right">{{formatCurrency reportData.reportGrandTotals.totalCostOfGoodsSold currencySymbol}}</td>
+                <td class="label">Ganancia Bruta Total:</td><td class="text-right profit">{{formatCurrency reportData.reportGrandTotals.totalProfit currencySymbol}}</td>
+            </tr>
+        </table>
+    </div>
+    {{/if}}
+
+    <h2>Detalle de Ventas</h2>
+    {{#if reportData.data.length}}
+        {{#each reportData.data}}
+        <div class="sale-item">
+            <div class="sale-item-header">
+                Venta #: {{this.saleNumber}} | Fecha: {{formatDate this.saleDate "dd/MM/yy HH:mm"}} | Cliente: {{this.customerName}} | Vendedor: {{this.salespersonName}} | Estado: {{lookup @root.saleStatusLabels this.status}}
+            </div>
+            <table class="lines-table">
+                <thead>
+                    <tr>
+                        <th>Producto/Descripción</th>
+                        <th class="text-center">Cant.</th>
+                        <th class="text-right">P.Unit</th>
+                        <th class="text-right">Desc.</th>
+                        <th class="text-right">Subtotal</th>
+                        <th class="text-right">Imp.</th>
+                        <th class="text-right">Total Línea</th>
+                        <th class="text-right">Costo</th>
+                        <th class="text-right">Ganancia</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{#each this.lines}}
+                    <tr>
+                        <td>{{this.productName}}{{#if this.productSku}} ({{this.productSku}}){{/if}}{{#if this.miscDescription}} {{this.miscDescription}}{{/if}}</td>
+                        <td class="text-center">{{this.quantity}}</td>
+                        <td class="text-right">{{formatCurrency ../../currencySymbol this.unitPrice}}</td>
+                        <td class="text-right">{{formatCurrency ../../currencySymbol this.lineDiscountAmount}}</td>
+                        <td class="text-right">{{formatCurrency ../../currencySymbol this.lineTotalBeforeTax}}</td>
+                        <td class="text-right">{{formatCurrency ../../currencySymbol this.lineTaxAmount}}</td>
+                        <td class="text-right">{{formatCurrency ../../currencySymbol this.lineTotalAfterTax}}</td>
+                        <td class="text-right">{{formatCurrency ../../currencySymbol this.totalLineCost}}</td>
+                        <td class="text-right profit">{{formatCurrency ../../currencySymbol this.lineProfit}}</td>
+                    </tr>
+                    {{/each}}
+                </tbody>
+            </table>
+            <table style="width: 50%; margin-left: auto; margin-bottom: 10px; font-size: 9px;">
+                <tr><td class="label">Subtotal Venta (Post-Desc.Línea):</td><td class="text-right">{{formatCurrency @root.currencySymbol this.subTotalAfterLineDiscounts}}</td></tr>
+                <tr><td class="label">Descuento General:</td><td class="text-right">{{formatCurrency @root.currencySymbol this.discountOnTotalAmount}}</td></tr>
+                <tr><td class="label">Monto Imponible:</td><td class="text-right">{{formatCurrency @root.currencySymbol this.taxableAmount}}</td></tr>
+                <tr><td class="label">Impuesto Total Venta:</td><td class="text-right">{{formatCurrency @root.currencySymbol this.taxTotal}}</td></tr>
+                <tr><td class="label" style="font-weight:bold;">TOTAL VENTA:</td><td class="text-right" style="font-weight:bold;">{{formatCurrency @root.currencySymbol this.totalAmount}}</td></tr>
+                <tr><td class="label">Costo Total Venta:</td><td class="text-right">{{formatCurrency @root.currencySymbol this.totalCostOfGoodsSold}}</td></tr>
+                <tr><td class="label profit">Ganancia Venta:</td><td class="text-right profit">{{formatCurrency @root.currencySymbol this.totalSaleProfit}}</td></tr>
+            </table>
+            </div>
+        {{/each}}
+    {{else}}
+        <p>No se encontraron ventas para los filtros aplicados.</p>
+    {{/if}}
+
+    </body>
+</html>
