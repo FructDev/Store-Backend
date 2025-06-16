@@ -93,6 +93,11 @@ class CreateSaleLineDto {
   @IsString()
   inventoryItemId?: string; // ID del InventoryItem específico (ej. IMEI ya seleccionado en frontend)
 
+  @ApiPropertyOptional({ description: 'IMEI o número de serie del producto, si aplica.' })
+  @IsOptional()
+  @IsString()
+  imei?: string;
+
   // Opción 2: Venta Libre
   @ApiPropertyOptional({ description: 'Descripción del artículo misceláneo' })
   @IsOptional()
