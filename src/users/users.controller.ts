@@ -20,7 +20,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt.guard'; // Autenticación
 import { RolesGuard } from '../common/guards/roles.guard'; // Autorización
 import { Roles } from '../auth/decorators/roles.decorator'; // Decorador de Roles
-import { Permissions } from '../auth/decorators/permissions.decorator'; // Decorador de Roles
+// import { Permissions } from '../auth/decorators/permissions.decorator'; // Decorador de Roles
 import {
   ApiTags,
   ApiOperation,
@@ -30,7 +30,7 @@ import {
   ApiBody,
   ApiBearerAuth,
 } from '@nestjs/swagger';
-import { PermissionsGuard } from 'src/common/guards/permissions.guard';
+// import { PermissionsGuard } from 'src/common/guards/permissions.guard';
 import { FindUsersQueryDto } from './dto/find-users-query.dto';
 
 // Define la estructura esperada del payload del usuario en la solicitud (viene del JWT)
@@ -47,7 +47,7 @@ interface RequestWithUserPayload extends Request {
 @ApiTags('Manejo de usuarios') // Etiqueta para la documentación Swagger
 @ApiBearerAuth() // Indica que se requiere autenticación
 @Controller('users') // Prefijo base /users
-@UseGuards(JwtAuthGuard, PermissionsGuard, RolesGuard) // Aplicar guardias a TODO el controlador
+@UseGuards(JwtAuthGuard, RolesGuard) // Aplicar guardias a TODO el controlador
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
@@ -90,7 +90,6 @@ export class UsersController {
   })
   @Post()
   @Roles('STORE_ADMIN') // Solo admins pueden crear usuarios
-  @Permissions('manage:User')
   @HttpCode(HttpStatus.CREATED)
   async create(
     @Body() createUserDto: CreateUserDto,
@@ -132,7 +131,7 @@ export class UsersController {
     type: String,
   })
   @Get()
-  @Permissions('manage:User')
+  // @Permissions('manage:User')
   @Roles('STORE_ADMIN') // Solo admins pueden listar usuarios
   async findAll(
     @Query() query: FindUsersQueryDto,
